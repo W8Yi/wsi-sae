@@ -1,0 +1,12 @@
+__pycache__/
+.pytest_cache/
+.venv/
+*.pyc
+*.pyo
+*.pyd
+.coverage
+wandb/
+runs/
+mining/
+exports/
+

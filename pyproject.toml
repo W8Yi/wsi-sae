@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wsi-sae"
+version = "0.1.0"
+description = "Server-only SAE training and concept mining for WSI feature embeddings."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "h5py",
+  "joblib",
+  "numpy",
+  "pandas",
+  "scikit-learn",
+  "torch",
+  "wandb",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+]
+
+[project.scripts]
+wsi-sae = "wsi_sae.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
