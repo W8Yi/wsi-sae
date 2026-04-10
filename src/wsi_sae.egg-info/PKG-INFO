@@ -1,0 +1,61 @@
+Metadata-Version: 2.4
+Name: wsi-sae
+Version: 0.1.0
+Summary: Server-only SAE training and concept mining for WSI feature embeddings.
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: h5py
+Requires-Dist: joblib
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: scikit-learn
+Requires-Dist: torch
+Requires-Dist: wandb
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+
+# wsi-sae
+
+SAE training, concept mining, data-layout management, viewer export, and local tile extraction for WSI embeddings.
+
+This repo is designed to run on both of your machines:
+
+- Server: owns GPUs, encoder features, labels, manifests, checkpoints, mining outputs, and exported bundles.
+- Local PC: owns the real slides and uses the same `wsi-sae` bundle contract to extract representative tiles or other slide-backed outputs.
+
+Primary CLI:
+
+```bash
+wsi-sae train
+wsi-sae mine
+wsi-sae build-prototypes
+wsi-sae build-targets
+wsi-sae compute-percentiles
+wsi-sae probe
+wsi-sae export-viewer
+wsi-sae data ...
+wsi-sae extract-tiles
+```
+
+Key workflows:
+
+```bash
+wsi-sae data init-layout --root /research/projects/mllab/WSI --project TCGA
+wsi-sae data ingest-tcga-features --root /research/projects/mllab/WSI --legacy-root /research/projects/mllab/WSI/TCGA_features --encoders uni2,seal --link-mode symlink
+wsi-sae data build-registry --root /research/projects/mllab/WSI --project TCGA
+wsi-sae data validate-layout --root /research/projects/mllab/WSI --project TCGA
+```
+
+Later, after encoding is finished:
+
+```bash
+wsi-sae data promote-links --root /research/projects/mllab/WSI --project TCGA --encoders uni2,seal
+```
+
+For the local PC:
+
+```bash
+wsi-sae extract-tiles --bundle /path/to/exported_bundle --data-root /mnt/data --out-dir /path/to/output
+```
+
+See [docs/two-machine-workflow.md](/common/users/wq50/wsi-sae/docs/two-machine-workflow.md) for the server/local-PC handoff design, and [data_structure.md](/common/users/wq50/wsi-sae/data_structure.md) for the canonical shared layout contract.

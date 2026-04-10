@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+export PYTHONPATH="${PWD}/src${PYTHONPATH:+:${PYTHONPATH}}"
+export WSI_DATA_ROOT="${WSI_DATA_ROOT:-/research/projects/mllab/WSI}"
 export TCGA_FEATURES_BASE="${TCGA_FEATURES_BASE:-/research/projects/mllab/WSI/TCGA_features}"
 
 RUN_NAME="${RUN_NAME:-tcga_sae_advanced_v11}"
@@ -10,6 +12,10 @@ MINING_ROOT="${MINING_ROOT:-${MINING_ROOT_BASE}/${RUN_NAME}}"
 EXPORT_ROOT="${EXPORT_ROOT:-/common/users/wq50/wsi-sae/exports}"
 
 INDEX_JSON="${INDEX_JSON:-metadata/indexes/manifest_index.json}"
+# Default policy:
+# - use training data for latent discovery / quick debugging
+# - use test data for final concept exports and representative tile bundles
+# Point INDEX_JSON at the split you want to mine for this run.
 SLIDES_PER_PROJECT="${SLIDES_PER_PROJECT:-200}"
 TILES_PER_SLIDE="${TILES_PER_SLIDE:-2048}"
 CHUNK_TILES="${CHUNK_TILES:-512}"

@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+export PYTHONPATH="${PWD}/src${PYTHONPATH:+:${PYTHONPATH}}"
 
 # Runtime
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-2}"
 export HDF5_USE_FILE_LOCKING="${HDF5_USE_FILE_LOCKING:-FALSE}"
+export WSI_DATA_ROOT="${WSI_DATA_ROOT:-/research/projects/mllab/WSI}"
 export TCGA_FEATURES_BASE="${TCGA_FEATURES_BASE:-/research/projects/mllab/WSI/TCGA_features}"
 
 # Paths

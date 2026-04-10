@@ -13,6 +13,8 @@ COMMAND_MODULES = {
     "compute-percentiles": "wsi_sae.commands.compute_percentiles",
     "probe": "wsi_sae.commands.probe",
     "export-viewer": "wsi_sae.commands.export_viewer",
+    "data": "wsi_sae.commands.data",
+    "extract-tiles": "wsi_sae.commands.extract_tiles",
 }
 
 
@@ -45,4 +47,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

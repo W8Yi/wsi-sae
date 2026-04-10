@@ -39,6 +39,13 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 
+from wsi_sae.data.layout import (
+    DEFAULT_PROJECT,
+    canonical_feature_h5_dir,
+    data_root as canonical_data_root,
+    infer_cohort_from_path,
+)
+
 # -----------------------------
 # HDF5 handle cache (per worker)
 # -----------------------------
@@ -113,14 +120,63 @@ def _tcga_features_bases() -> List[str]:
     return out
 
 
+def _canonical_data_roots() -> List[str]:
+    env_root = os.environ.get("WSI_DATA_ROOT", "").strip()
+    out: List[str] = []
+    for root in [env_root, str(canonical_data_root(None))]:
+        if root and root not in out:
+            out.append(root)
+    return out
+
+
 def _tcga_feature_subdirs() -> Tuple[str, ...]:
     # UNI2 features were migrated from `features/` to `features_uni2/`.
     return ("features_uni2", "features", "")
 
 
+def _candidate_encoders_from_path(path: str | Path) -> List[str]:
+    text = str(path).lower()
+    preferred = os.environ.get("WSI_SAE_PREFERRED_ENCODER", "").strip().lower()
+    candidates: List[str] = []
+    for encoder in [preferred] if preferred else []:
+        if encoder in {"uni2", "seal", "gigapath", "virchow2"} and encoder not in candidates:
+            candidates.append(encoder)
+    if "features_seal" in text or "/seal/" in text:
+        candidates.append("seal")
+    if "features_uni2" in text or "/uni2/" in text or "uni2" in text:
+        candidates.append("uni2")
+    if "features_gigapath" in text or "/gigapath/" in text or "gigapath" in text:
+        candidates.append("gigapath")
+    if "features_virchow2" in text or "/virchow2/" in text or "virchow2" in text:
+        candidates.append("virchow2")
+    for encoder in ["uni2", "seal", "gigapath", "virchow2"]:
+        if encoder not in candidates:
+            candidates.append(encoder)
+    return candidates
+
+
+def _iter_canonical_h5_candidates(path: str):
+    p = Path(path)
+    cohort = infer_cohort_from_path(p)
+    if cohort is None:
+        project = _extract_tcga_project_from_parts(p.parts)
+        if project and project.startswith(f"{DEFAULT_PROJECT}-"):
+            cohort = project.split("-", 1)[1]
+    if cohort is None:
+        return
+    names = _candidate_tcga_h5_names(p)
+    for root in _canonical_data_roots():
+        for encoder in _candidate_encoders_from_path(p):
+            h5_dir = canonical_feature_h5_dir(root, encoder=encoder, project=DEFAULT_PROJECT, cohort=cohort)
+            for fname in names:
+                yield h5_dir / fname
+
+
 def _iter_h5_remap_candidates(path: str):
     p = Path(path)
     yield p
+    for cand in _iter_canonical_h5_candidates(path):
+        yield cand
     parts = p.parts
     if "extracted_features" not in parts:
         return
@@ -144,18 +200,42 @@ def _iter_h5_remap_candidates(path: str):
 
 def _resolve_h5_path_by_glob(path: str) -> Optional[str]:
     p = Path(path)
-    if "extracted_features" not in p.parts:
-        return None
-    project = _extract_tcga_project_from_parts(p.parts)
-    if not project:
-        return None
-
     names = _candidate_tcga_h5_names(p)
     stems: List[str] = []
     for n in names:
         s = Path(n).stem
         if s and s not in stems:
             stems.append(s)
+
+    cohort = infer_cohort_from_path(p)
+    if cohort is None:
+        project = _extract_tcga_project_from_parts(p.parts)
+        if project and project.startswith(f"{DEFAULT_PROJECT}-"):
+            cohort = project.split("-", 1)[1]
+    for root in _canonical_data_roots():
+        search_dirs: List[Path] = []
+        for encoder in _candidate_encoders_from_path(p):
+            project_root = Path(root) / "wsi_features" / encoder / DEFAULT_PROJECT
+            if cohort:
+                search_dirs.append(project_root / cohort / "h5")
+            elif project_root.is_dir():
+                search_dirs.extend(sorted(project_root.glob("*/h5")))
+        for feat_dir in search_dirs:
+            if not feat_dir.is_dir():
+                continue
+            for stem in stems:
+                exact = feat_dir / f"{stem}.h5"
+                if exact.exists():
+                    return str(exact)
+                matches = sorted(feat_dir.glob(f"{stem}*.h5"))
+                if matches:
+                    return str(matches[0])
+
+    if "extracted_features" not in p.parts:
+        return None
+    project = _extract_tcga_project_from_parts(p.parts)
+    if not project:
+        return None
 
     for base in _tcga_features_bases():
         root = Path(base) / project

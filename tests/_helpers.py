@@ -33,11 +33,19 @@ def cli_env() -> dict[str, str]:
     return env
 
 
-def run_cli(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+def run_cli(
+    args: list[str],
+    cwd: Path | None = None,
+    *,
+    env_overrides: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    env = cli_env()
+    if env_overrides:
+        env.update(env_overrides)
     result = subprocess.run(
         [sys.executable, "-m", "wsi_sae.cli", *args],
         cwd=str(ROOT if cwd is None else cwd),
-        env=cli_env(),
+        env=env,
         text=True,
         capture_output=True,
     )
@@ -60,6 +68,15 @@ def write_feature_h5(path: Path, features: np.ndarray, coords: np.ndarray | None
     with h5py.File(path, "w") as f:
         f.create_dataset("features", data=features)
         f.create_dataset("coords", data=coords)
+    return path
+
+
+def write_slide_image(path: Path, *, width: int = 1024, height: int = 1024) -> Path:
+    from PIL import Image
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    img = Image.new("RGB", (width, height), color=(64, 96, 128))
+    img.save(path)
     return path
 
 

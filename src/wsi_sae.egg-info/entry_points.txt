@@ -1,0 +1,2 @@
+[console_scripts]
+wsi-sae = wsi_sae.cli:main

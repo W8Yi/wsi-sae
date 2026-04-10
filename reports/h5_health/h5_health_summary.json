@@ -1,0 +1,32 @@
+{
+  "project": "TCGA",
+  "source": "legacy",
+  "scan_root": "/research/projects/mllab/WSI/TCGA_features",
+  "encoders": [
+    "uni2",
+    "seal",
+    "gigapath",
+    "virchow2"
+  ],
+  "files_scanned": 31302,
+  "files_ok": 31301,
+  "files_error": 1,
+  "by_encoder": {
+    "uni2": {
+      "ok": 11592,
+      "error": 1
+    },
+    "seal": {
+      "ok": 11593,
+      "error": 0
+    },
+    "gigapath": {
+      "ok": 3734,
+      "error": 0
+    },
+    "virchow2": {
+      "ok": 4382,
+      "error": 0
+    }
+  }
+}
