@@ -8,6 +8,9 @@ from typing import Callable
 COMMAND_MODULES = {
     "train": "wsi_sae.commands.train",
     "mine": "wsi_sae.commands.mine",
+    "mine-bundles": "wsi_sae.commands.mine_bundles",
+    "rep-export": "wsi_sae.commands.rep_export",
+    "rep-materialize": "wsi_sae.commands.rep_materialize",
     "build-prototypes": "wsi_sae.commands.build_prototypes",
     "build-targets": "wsi_sae.commands.build_targets",
     "compute-percentiles": "wsi_sae.commands.compute_percentiles",

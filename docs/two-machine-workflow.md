@@ -16,10 +16,10 @@
 4. Train and mine on the server with immutable run IDs such as `tcga_sae_advanced_v11`.
 5. Store model checkpoints under `runs/<experiment>/<stage>/`.
 6. Store mining outputs under `mining/<experiment>/<stage>/`.
-7. Export sync-ready bundles under `exports/<experiment>/<stage>/`.
+7. Export representative-latent bundles under `exports/<experiment>/representatives_<split>/`.
 8. Sync only `exports/...` to the local PC by `rsync` or `rclone`.
-9. Use `wsi-sae extract-tiles` on the local PC for batch tile extraction from local slides.
-10. Point local `wsi-bench` at the synced `prototype_tiles.csv` plus the local `slides_root` for interactive showcase.
+9. Use `wsi-sae rep-materialize` on the local PC to load local feature vectors and extract actual WSI tiles from local slides.
+10. Point local `wsi-bench` at the synced representative CSVs plus the local `slides_root` for interactive showcase.
 
 ## Default Training And Mining Policy
 
@@ -40,17 +40,17 @@ Current default relu latent widths:
 Current default split policy:
 
 - train the SAE on the training split
-- do latent discovery and quick mining on training data
-- do final concept mining exports and representative tile extraction on test data
+- do latent selection and quick mining on training data
+- do final representative/support export on test data
 
 Example helper scripts:
 
 - server relu training:
   `/common/users/wq50/wsi-sae/examples/run/train_relu_sae_encoder.sh`
-- server relu mining/export:
+- server representative export:
   `/common/users/wq50/wsi-sae/examples/run/mine_export_relu_encoder.sh`
-- local-PC tile extraction:
-  `/common/users/wq50/wsi-sae/examples/run/extract_tiles_local.sh`
+- local-PC materialization:
+  `/common/users/wq50/wsi-sae/examples/run/rep_materialize_local.sh`
 
 ## Canonical Shared Layout
 
@@ -111,18 +111,24 @@ wsi-sae data promote-links \
 - Slide identity
   Use `slide_key` as the cross-machine slide identifier.
 - Feature identity
-  Preserve the original `h5_path` in exports for provenance, but treat `slide_key` as the cross-machine lookup key.
+  Preserve the original `legacy_h5_path` in exports for provenance, but treat `feature_relpath` plus `slide_key` as the cross-machine lookup key.
 
 ## Artifact Contract
 
 - `bundle_manifest.json`
   Canonical machine-to-machine metadata.
-- `prototype_tiles.csv`
-  Viewer-compatible export for `wsi-bench`.
-- Local extraction output
-  `wsi-sae extract-tiles` writes `extracted_tiles.csv`, `extract_summary.json`, extracted tile images, and latent-level contact sheets.
-- Optional copied artifacts
-  `pass1_stats.json`, `pass2_top_tiles*.json`, `run_config.json`, `prototypes.npz`, `prototypes.json`, `latent_targets.json`, `probe_summary.json`.
+- `representative_latents.csv`
+  One representative row per `latent_strategy x latent_idx x representative_method`.
+- `representative_support_tiles.csv`
+  Full ordered support rows per `latent_strategy x latent_idx x representative_method`.
+- `latent_summary.csv`
+  Per-latent summary table for fast UI ingestion and filtering in `wsi-bench`.
+- `bundle_summary.json`
+  Compact aggregate stats about the bundle.
+- `wsi_bench_model.json`
+  Ready-to-merge `sae_models.json` snippet for the local viewer.
+- Local materialization output
+  `wsi-sae rep-materialize` writes `materialized_rows.csv`, `materialize_summary.json`, `encoder_features.npy`, `encoder_feature_index.csv`, extracted tile images, and method-level contact sheets.
 
 The coordinate convention is fixed to `level0_top_left_px`.
 
@@ -137,33 +143,42 @@ The coordinate convention is fixed to `level0_top_left_px`.
 Example:
 
 ```bash
+RUN_NAME=tcga_seal_sae_relu_v1 \
+bash /common/users/wq50/wsi-sae/examples/run/rep_export_from_run.sh
+```
+
+Sync the resulting export directory:
+
+```bash
 rsync -av \
-  /common/users/wq50/wsi-sae/exports/tcga_sae_advanced_v11/ \
-  /local/path/wsi-sae-exports/tcga_sae_advanced_v11/
+  /common/users/wq50/wsi-sae/exports/tcga_seal_sae_relu_v1/ \
+  /local/path/wsi-sae-exports/tcga_seal_sae_relu_v1/
 ```
 
 Then on the local PC:
 
 ```bash
-wsi-sae extract-tiles \
-  --bundle /local/path/wsi-sae-exports/tcga_sae_advanced_v11/sdf2 \
+wsi-sae rep-materialize \
+  --bundle /local/path/wsi-sae-exports/tcga_seal_sae_relu_v1/representatives_test \
   --data-root /mnt/data \
-  --out-dir /mnt/data/derived/sae_tiles/tcga_sae_advanced_v11_sdf2
+  --out-dir /mnt/data/derived/sae_tiles/tcga_seal_sae_relu_v1
 ```
 
 ## Local PC `wsi-bench` Setup
 
-Create a local manifest entry pointing to the synced CSV and the local slide root:
+Create a local manifest entry pointing to the synced CSV and the local slide root, or start from the generated `wsi_bench_model.json` in the bundle:
 
 ```json
 {
-  "model_id": "tcga_sae_advanced_v11_sdf2",
-  "model_name": "TCGA SAE Advanced v11 SDF2",
-  "encoder": "uni2h",
+  "model_id": "tcga_seal_sae_relu_v1_representatives_test",
+  "model_name": "tcga_seal_sae_relu_v1 representatives test",
+  "encoder": "seal",
   "dataset": "TCGA",
   "slides_root": "/path/to/local/slides",
-  "prototype_tiles_csv": "/path/to/synced/bundle/prototype_tiles.csv",
-  "top_attention_tiles_csv": "",
+  "representative_latents_csv": "/path/to/synced/bundle/representative_latents.csv",
+  "representative_support_tiles_csv": "/path/to/synced/bundle/representative_support_tiles.csv",
+  "latent_summary_csv": "/path/to/synced/bundle/latent_summary.csv",
+  "bundle_summary_json": "/path/to/synced/bundle/bundle_summary.json",
   "tile_size": 256
 }
 ```
@@ -171,10 +186,10 @@ Create a local manifest entry pointing to the synced CSV and the local slide roo
 ## Failure Handling
 
 - Missing local slide
-  Keep the row in `prototype_tiles.csv`; `wsi-bench` will show unresolved slide paths, which is better than losing provenance.
-- Missing local slide during `extract-tiles`
-  The row is preserved in `extracted_tiles.csv` with status `missing_slide`.
+  Keep the row in `representative_support_tiles.csv`; `wsi-bench` will show unresolved slide paths, which is better than losing provenance.
+- Missing local slide during `rep-materialize`
+  The row is preserved in `materialized_rows.csv` with status `missing_slide`.
 - Slide naming mismatch
   Fix the local lookup rule or rename local slide files so `slide_key` resolves consistently.
 - Feature path mismatch
-  This is expected across machines. `h5_path` is provenance, not the local rendering lookup path.
+  This is expected across machines. `legacy_h5_path` is provenance, while `feature_relpath` is the local lookup path.

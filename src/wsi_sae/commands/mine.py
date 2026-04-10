@@ -53,6 +53,9 @@ from wsi_sae.data.dataloader import _build_pool2x2_groups_from_coords, Pool2x2Ge
 from wsi_sae.models.sae import ReLUSparseSAE, TopKSAE, BatchTopKSAE, SDFSAE2Level, InputNormWrapper
 
 
+PROGRESS_EVERY_SLIDES = 10
+
+
 def _slide_seed(base_seed: int, h5_path: Path, phase: str) -> int:
     h = hashlib.blake2b(digest_size=8)
     h.update(str(int(base_seed)).encode("utf-8"))
@@ -568,7 +571,7 @@ def pass1_collect_stats(
                 stats["sum_sq"] += (zf * zf).sum(dim=0).detach().cpu().numpy()
                 stats["nnz"] += (zf > 0).sum(dim=0).detach().cpu().numpy().astype(np.int64)
 
-        if (i % 50 == 0) or (i == n_files):
+        if (i == 1) or (i % PROGRESS_EVERY_SLIDES == 0) or (i == n_files):
             dt = max(1e-6, time.time() - t0)
             print(
                 f"[pass1] progress {i}/{n_files} used={used_slides} empty={empty_slides} "
@@ -834,7 +837,7 @@ def pass2_top_tiles(
                         elif score > h[0][0]:
                             heapq.heapreplace(h, (score, item))
 
-        if (i % 50 == 0) or (i == n_files):
+        if (i == 1) or (i % PROGRESS_EVERY_SLIDES == 0) or (i == n_files):
             dt = max(1e-6, time.time() - t0)
             print(
                 f"[pass2] progress {i}/{n_files} used={used_slides} empty={empty_slides} "

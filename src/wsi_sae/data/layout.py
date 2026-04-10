@@ -702,3 +702,57 @@ def resolve_slide_path_from_mapping(data_root_path: str | Path, *, slide_key: st
                     return row, matches[0]
         return row, None
     return None, None
+
+
+def resolve_feature_path(
+    data_root_path: str | Path,
+    *,
+    feature_relpath: str = "",
+    slide_key: str = "",
+    encoder: str = "",
+) -> tuple[dict[str, str] | None, Path | None]:
+    root_path = data_root(data_root_path)
+    rel = str(feature_relpath).strip()
+    if rel:
+        candidate = (root_path / rel).resolve()
+        if candidate.exists():
+            return None, candidate
+
+    slide_key = extract_slide_id(slide_key)
+    encoder_key = str(encoder).strip().lower()
+    encoder_col = {
+        "uni2": "uni_path",
+        "seal": "seal_path",
+        "gigapath": "gigapath_path",
+        "virchow2": "virchow2_path",
+    }.get(encoder_key, f"{encoder_key}_path" if encoder_key else "")
+
+    if slide_key and encoder_col:
+        mapping_path = registry_dir(root_path) / "mapping.csv"
+        if mapping_path.exists():
+            for row in _read_csv_rows(mapping_path):
+                if extract_slide_id(row.get("slide_id", "")) != slide_key:
+                    continue
+                mapped = str(row.get(encoder_col, "")).strip()
+                if mapped:
+                    candidate = Path(mapped)
+                    if candidate.exists():
+                        return row, candidate
+                break
+
+    if slide_key and encoder_key:
+        features_path = registry_dir(root_path) / "features.csv"
+        if features_path.exists():
+            for row in _read_csv_rows(features_path):
+                if extract_slide_id(row.get("slide_id", "")) != slide_key:
+                    continue
+                if str(row.get("encoder", "")).strip().lower() != encoder_key:
+                    continue
+                mapped = str(row.get("feature_path", "")).strip()
+                if mapped:
+                    candidate = Path(mapped)
+                    if candidate.exists():
+                        return row, candidate
+                break
+
+    return None, None

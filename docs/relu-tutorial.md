@@ -11,8 +11,8 @@ It assumes:
 - default latent width: `8 x d_in`
 - default split policy:
   - train the SAE on the training split
-  - use training data for latent discovery and quick mining
-  - use test data for final concept exports and representative tile extraction
+  - use training data for latent selection and quick mining
+  - use test data for final representative exports and local tile materialization
 
 The provided launcher scripts automatically export `WSI_SAE_PREFERRED_ENCODER=<encoder>` so stale generic manifest paths resolve to the intended encoder family.
 
@@ -120,27 +120,66 @@ MANIFEST=/common/users/wq50/SAE_path/metadata/manifests/sae_manifests_tcga_patie
 bash /common/users/wq50/wsi-sae/examples/run/train_relu_sae_encoder.sh
 ```
 
-## 4. Mine Concepts And Export Bundles On The Server
+## 4. Export Representative Latents And Support Tiles On The Server
 
-Default launcher:
+Recommended one-command workflow:
+
+```bash
+RUN_NAME=tcga_seal_sae_relu_v1 \
+bash /common/users/wq50/wsi-sae/examples/run/rep_export_from_run.sh
+```
+
+This is the preferred path now. You only provide the training run name, and `wsi-sae` infers:
+
+- the stage directory under `runs/<run_name>/`
+- the checkpoint to mine from
+- the encoder
+- the manifest path
+- `d_in`, `latent_dim`, and magnification
+- the default split policy:
+  - `train` for latent selection
+  - `test` for final representative/support bundle export
+
+The underlying CLI is:
+
+```bash
+wsi-sae rep-export --run-name tcga_seal_sae_relu_v1
+```
+
+For each selected latent, the export writes one representative row for every method:
+
+- `max_activation`
+- `median_activation`
+- `diverse_support`
+- `slide_spread`
+
+and keeps the full ordered support rows for each method in the bundle.
+
+### Optional knobs
+
+```bash
+RUN_NAME=tcga_seal_sae_relu_v1 \
+SLIDES_PER_PROJECT=200 \
+TILES_PER_SLIDE=2048 \
+CHUNK_TILES=512 \
+N_LATENTS=128 \
+TOPN=50 \
+DEVICE=cuda \
+bash /common/users/wq50/wsi-sae/examples/run/rep_export_from_run.sh
+```
+
+### Encoder-specific convenience launchers
+
+If you still prefer the encoder-based wrapper, this remains available:
 
 ```bash
 /common/users/wq50/wsi-sae/examples/run/mine_export_relu_encoder.sh
 ```
 
-Recommended policy:
-
-- `TRAIN_INDEX_JSON`: training split index for discovery
-- `TEST_INDEX_JSON`: test split index for final exported bundle
-
-If your filenames differ, point these env vars at the real index JSON paths.
-
 ### `uni2`
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 ENCODER=uni2 \
-TRAIN_INDEX_JSON=metadata/indexes/manifest_index_train.json \
-TEST_INDEX_JSON=metadata/indexes/manifest_index_test.json \
 bash /common/users/wq50/wsi-sae/examples/run/mine_export_relu_encoder.sh
 ```
 
@@ -148,8 +187,6 @@ bash /common/users/wq50/wsi-sae/examples/run/mine_export_relu_encoder.sh
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 ENCODER=seal \
-TRAIN_INDEX_JSON=metadata/indexes/manifest_index_train.json \
-TEST_INDEX_JSON=metadata/indexes/manifest_index_test.json \
 bash /common/users/wq50/wsi-sae/examples/run/mine_export_relu_encoder.sh
 ```
 
@@ -157,8 +194,6 @@ bash /common/users/wq50/wsi-sae/examples/run/mine_export_relu_encoder.sh
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 ENCODER=gigapath \
-TRAIN_INDEX_JSON=metadata/indexes/manifest_index_train.json \
-TEST_INDEX_JSON=metadata/indexes/manifest_index_test.json \
 bash /common/users/wq50/wsi-sae/examples/run/mine_export_relu_encoder.sh
 ```
 
@@ -166,16 +201,23 @@ bash /common/users/wq50/wsi-sae/examples/run/mine_export_relu_encoder.sh
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 ENCODER=virchow2 \
-TRAIN_INDEX_JSON=metadata/indexes/manifest_index_train.json \
-TEST_INDEX_JSON=metadata/indexes/manifest_index_test.json \
 bash /common/users/wq50/wsi-sae/examples/run/mine_export_relu_encoder.sh
 ```
 
 The final exported viewer bundle will be written under:
 
 ```text
-/common/users/wq50/wsi-sae/exports/<train_run_name>/relu_test_export
+/common/users/wq50/wsi-sae/exports/<train_run_name>/representatives_test
 ```
+
+The representative bundle now includes:
+
+- `bundle_manifest.json`
+- `representative_latents.csv`
+- `representative_support_tiles.csv`
+- `latent_summary.csv`
+- `bundle_summary.json`
+- `wsi_bench_model.json`
 
 ## 5. Sync Bundle To The Local PC
 
@@ -183,45 +225,56 @@ Example:
 
 ```bash
 rsync -av \
-  /common/users/wq50/wsi-sae/exports/tcga_uni2_sae_relu_v1/relu_test_export/ \
-  /local/path/wsi-sae-exports/tcga_uni2_sae_relu_v1/relu_test_export/
+  /common/users/wq50/wsi-sae/exports/tcga_uni2_sae_relu_v1/representatives_test/ \
+  /local/path/wsi-sae-exports/tcga_uni2_sae_relu_v1/representatives_test/
 ```
 
-## 6. Extract Tiles On The Local PC
+## 6. Materialize Encoder Features And Tiles On The Local PC
 
 Default local-PC launcher:
 
 ```bash
-/common/users/wq50/wsi-sae/examples/run/extract_tiles_local.sh
+/common/users/wq50/wsi-sae/examples/run/rep_materialize_local.sh
 ```
 
 ### Example: `uni2`
 
 ```bash
 DATA_ROOT=/mnt/data \
-BUNDLE_DIR=/local/path/wsi-sae-exports/tcga_uni2_sae_relu_v1/relu_test_export \
+BUNDLE_DIR=/local/path/wsi-sae-exports/tcga_uni2_sae_relu_v1/representatives_test \
 OUT_DIR=/mnt/data/derived/sae_tiles/tcga_uni2_sae_relu_v1 \
-bash /common/users/wq50/wsi-sae/examples/run/extract_tiles_local.sh
+bash /common/users/wq50/wsi-sae/examples/run/rep_materialize_local.sh
 ```
 
 ### Example: `virchow2`
 
 ```bash
 DATA_ROOT=/mnt/data \
-BUNDLE_DIR=/local/path/wsi-sae-exports/tcga_virchow2_sae_relu_v1/relu_test_export \
+BUNDLE_DIR=/local/path/wsi-sae-exports/tcga_virchow2_sae_relu_v1/representatives_test \
 OUT_DIR=/mnt/data/derived/sae_tiles/tcga_virchow2_sae_relu_v1 \
-bash /common/users/wq50/wsi-sae/examples/run/extract_tiles_local.sh
+bash /common/users/wq50/wsi-sae/examples/run/rep_materialize_local.sh
 ```
 
 This writes:
 
-- `extracted_tiles.csv`
-- `extract_summary.json`
+- `materialized_rows.csv`
+- `materialize_summary.json`
+- `encoder_features.npy`
+- `encoder_feature_index.csv`
 - extracted tile images
-- latent-level contact sheets
+- latent strategy / representative method contact sheets
 
 ## 7. Use With `wsi-bench`
 
-After syncing the bundle, `wsi-bench` can point directly at the synced `prototype_tiles.csv` for interactive browsing.
+After syncing the bundle, `wsi-bench` can point directly at the synced `representative_latents.csv` and `representative_support_tiles.csv` for interactive browsing.
 
-Use `wsi-sae extract-tiles` when you want a saved batch of representative tiles or contact sheets on the local PC.
+The viewer now understands:
+
+- `latent_strategy`
+- `representative_method`
+
+so you can compare the same latent under different selection strategies and representative-tile methods without recomputing those rankings locally.
+
+You can also copy the generated `wsi_bench_model.json` snippet from the bundle and merge it into your local `wsi-bench/config/sae_models.json`.
+
+Use `wsi-sae rep-materialize` when you want saved representative tile images, encoder feature vectors, and contact sheets on the local PC.

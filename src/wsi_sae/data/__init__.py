@@ -25,6 +25,7 @@ _EXPORTS = {
     "parse_encoder_list": "wsi_sae.data.layout",
     "promote_links": "wsi_sae.data.layout",
     "resolve_slide_path_from_mapping": "wsi_sae.data.layout",
+    "resolve_feature_path": "wsi_sae.data.layout",
     "scan_h5_health": "wsi_sae.data.layout",
     "validate_layout": "wsi_sae.data.layout",
 }

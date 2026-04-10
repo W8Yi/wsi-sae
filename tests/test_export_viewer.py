@@ -85,6 +85,8 @@ def test_export_viewer_bundle_and_wsi_bench_compat(tmp_path):
     assert bundle_manifest["schema_version"] == "1.0"
     assert bundle_manifest["data"]["coordinate_convention"] == "level0_top_left_px"
     assert bundle_manifest["selection"]["selected_latents"] == [7]
+    assert bundle_manifest["artifacts"]["latent_summary_csv"] == "latent_summary.csv"
+    assert bundle_manifest["artifacts"]["wsi_bench_model_json"] == "wsi_bench_model.json"
 
     with (bundle_dir / "prototype_tiles.csv").open() as f:
         rows = list(csv.DictReader(f))
@@ -92,6 +94,16 @@ def test_export_viewer_bundle_and_wsi_bench_compat(tmp_path):
     assert rows[0]["latent_group"] == "parent_2"
     assert rows[0]["slide_key"] == "TCGA-AB-1234-01Z-00-DX1"
     assert rows[0]["tile_index"] == "11"
+    assert rows[0]["data_split"] == ""
+
+    with (bundle_dir / "latent_summary.csv").open() as f:
+        latent_rows = list(csv.DictReader(f))
+    assert len(latent_rows) == 1
+    assert latent_rows[0]["latent_idx"] == "7"
+    assert latent_rows[0]["best_slide_key"] == "TCGA-AB-1234-01Z-00-DX1"
+
+    model_snippet = json.loads((bundle_dir / "wsi_bench_model.json").read_text())
+    assert model_snippet["models"][0]["prototype_tiles_csv"] == "prototype_tiles.csv"
 
     slides_root = tmp_path / "slides"
     slides_root.mkdir()
@@ -125,4 +137,3 @@ def test_export_viewer_bundle_and_wsi_bench_compat(tmp_path):
     assert model is not None
     assert model["summary"]["total_prototype_rows"] == 1
     assert model["summary"]["total_latents"] == 1
-
