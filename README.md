@@ -13,6 +13,7 @@ Primary CLI:
 wsi-sae train
 wsi-sae mine
 wsi-sae rep-export
+wsi-sae rep-analytics
 wsi-sae data ...
 wsi-sae rep-materialize
 ```
@@ -21,6 +22,7 @@ Legacy / lower-level commands still exist for compatibility and debugging, but t
 
 ```bash
 wsi-sae rep-export
+wsi-sae rep-analytics
 wsi-sae rep-materialize
 ```
 
@@ -88,6 +90,7 @@ Default relu representative-export and local materialization launchers are also 
 /common/users/wq50/wsi-sae/examples/run/mine_export_relu_encoder.sh
 /common/users/wq50/wsi-sae/examples/run/mine_export_from_run.sh
 /common/users/wq50/wsi-sae/examples/run/rep_export_from_run.sh
+/common/users/wq50/wsi-sae/examples/run/rep_analytics_from_run.sh
 /common/users/wq50/wsi-sae/examples/run/rep_materialize_local.sh
 /common/users/wq50/wsi-sae/examples/run/recover_uni2_from_hf.sh
 ```
@@ -108,6 +111,23 @@ The representative bundle now includes:
 - `latent_summary.csv`
 - `bundle_summary.json`
 - `wsi_bench_model.json`
+
+For InterPLM-style dashboard plots, generate server-side plot-ready analytics after `rep-export`:
+
+```bash
+wsi-sae rep-analytics --run-name tcga_seal_sae_relu_v1
+```
+
+This writes:
+
+- `plot_manifest.json`
+- `all_latent_metrics.csv`
+- `selected_latent_slide_stats.csv`
+- `selected_latent_histograms.json`
+- `cohort_enrichment.csv`
+- `latent_umap.csv`
+- `analytics_summary.json`
+- optional `case_label_enrichment.csv` when labels are provided
 
 The local PC then materializes the synced rows against its own feature and slide store with:
 

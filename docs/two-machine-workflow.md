@@ -17,9 +17,10 @@
 5. Store model checkpoints under `runs/<experiment>/<stage>/`.
 6. Store mining outputs under `mining/<experiment>/<stage>/`.
 7. Export representative-latent bundles under `exports/<experiment>/representatives_<split>/`.
-8. Sync only `exports/...` to the local PC by `rsync` or `rclone`.
-9. Use `wsi-sae rep-materialize` on the local PC to load local feature vectors and extract actual WSI tiles from local slides.
-10. Point local `wsi-bench` at the synced representative CSVs plus the local `slides_root` for interactive showcase.
+8. Build plot-ready analytics under `exports/<experiment>/analytics_<split>/`.
+9. Sync only `exports/...` to the local PC by `rsync` or `rclone`.
+10. Use `wsi-sae rep-materialize` on the local PC to load local feature vectors and extract actual WSI tiles from local slides.
+11. Point local `wsi-bench` at the synced representative CSVs plus the local `slides_root` for interactive showcase.
 
 ## Default Training And Mining Policy
 
@@ -127,6 +128,8 @@ wsi-sae data promote-links \
   Compact aggregate stats about the bundle.
 - `wsi_bench_model.json`
   Ready-to-merge `sae_models.json` snippet for the local viewer.
+- Analytics export
+  `wsi-sae rep-analytics` writes `plot_manifest.json`, `all_latent_metrics.csv`, `selected_latent_slide_stats.csv`, `selected_latent_histograms.json`, `cohort_enrichment.csv`, `latent_umap.csv`, `analytics_summary.json`, and optional `case_label_enrichment.csv`.
 - Local materialization output
   `wsi-sae rep-materialize` writes `materialized_rows.csv`, `materialize_summary.json`, `encoder_features.npy`, `encoder_feature_index.csv`, extracted tile images, and method-level contact sheets.
 
@@ -145,6 +148,9 @@ Example:
 ```bash
 RUN_NAME=tcga_seal_sae_relu_v1 \
 bash /common/users/wq50/wsi-sae/examples/run/rep_export_from_run.sh
+
+RUN_NAME=tcga_seal_sae_relu_v1 \
+bash /common/users/wq50/wsi-sae/examples/run/rep_analytics_from_run.sh
 ```
 
 Sync the resulting export directory:

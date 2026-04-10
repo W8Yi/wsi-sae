@@ -10,6 +10,7 @@ COMMAND_MODULES = {
     "mine": "wsi_sae.commands.mine",
     "mine-bundles": "wsi_sae.commands.mine_bundles",
     "rep-export": "wsi_sae.commands.rep_export",
+    "rep-analytics": "wsi_sae.commands.rep_analytics",
     "rep-materialize": "wsi_sae.commands.rep_materialize",
     "build-prototypes": "wsi_sae.commands.build_prototypes",
     "build-targets": "wsi_sae.commands.build_targets",

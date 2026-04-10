@@ -72,6 +72,18 @@ def _read_tile(path: Path, *, x: int, y: int, tile_size: int, image_module, open
         return img.convert("RGB").crop((x, y, x + tile_size, y + tile_size))
 
 
+def _save_tile_image(tile, out_path: Path, *, image_format: str, image_module) -> None:
+    # Rebuild the image onto a fresh RGB canvas so embedded metadata such as
+    # problematic ICC profiles from source slides is not carried into saved tiles.
+    rgb_tile = tile.convert("RGB")
+    clean_tile = image_module.new("RGB", rgb_tile.size)
+    clean_tile.paste(rgb_tile)
+    save_kwargs: dict[str, Any] = {}
+    if str(image_format).lower() == "png":
+        save_kwargs["compress_level"] = 1
+    clean_tile.save(out_path, **save_kwargs)
+
+
 def _make_contact_sheet(rows: list[dict[str, str]], *, out_path: Path, tile_size: int, image_module) -> None:
     if not rows:
         return
@@ -82,11 +94,14 @@ def _make_contact_sheet(rows: list[dict[str, str]], *, out_path: Path, tile_size
         img_path = Path(row["tile_path"])
         if not img_path.exists():
             continue
-        with image_module.open(img_path) as img:
-            img = img.convert("RGB")
-            col = idx % cols
-            row_idx = idx // cols
-            canvas.paste(img, (col * tile_size, row_idx * tile_size))
+        try:
+            with image_module.open(img_path) as img:
+                img = img.convert("RGB")
+                col = idx % cols
+                row_idx = idx // cols
+                canvas.paste(img, (col * tile_size, row_idx * tile_size))
+        except Exception:
+            continue
     out_path.parent.mkdir(parents=True, exist_ok=True)
     canvas.save(out_path)
 
@@ -137,7 +152,7 @@ def main() -> None:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             tile = _read_tile(slide_path, x=coord_x, y=coord_y, tile_size=int(args.tile_size), image_module=Image, openslide_module=openslide)
-            tile.save(out_path)
+            _save_tile_image(tile, out_path, image_format=str(args.image_format), image_module=Image)
             out_row["status"] = "ok"
             out_row["tile_path"] = str(out_path)
             success += 1

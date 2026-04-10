@@ -3,14 +3,19 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-from wsi_sae.commands.extract_tiles import _make_contact_sheet, _open_backends, _read_tile
+from wsi_sae.commands.extract_tiles import _make_contact_sheet, _open_backends, _read_tile, _save_tile_image
 from wsi_sae.data import resolve_feature_path, resolve_slide_path_from_mapping
+
+
+def _log(message: str) -> None:
+    print(f"[rep-materialize] {message}", file=sys.stderr, flush=True)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -80,9 +85,23 @@ def _read_feature_row(feature_path: Path, tile_index: int) -> np.ndarray:
 
 def main() -> None:
     args = _build_parser().parse_args()
+    _log(
+        f"starting materialization bundle={args.bundle} data_root={args.data_root} "
+        f"out_dir={args.out_dir} tile_size={int(args.tile_size)} image_format={args.image_format}"
+    )
     manifest_path, rep_csv, support_csv, bundle_manifest = _resolve_bundle_paths(args.bundle)
+    _log(f"resolved bundle manifest={manifest_path}")
+    _log(f"representative rows csv={rep_csv}")
+    _log(f"support rows csv={support_csv}")
     rows = _load_rows(rep_csv, support_csv, limit=int(args.limit))
+    _log(f"loaded {len(rows)} rows" + (f" (limit={int(args.limit)})" if int(args.limit) > 0 else ""))
+    _log("opening local image/slide backends")
     Image, openslide = _open_backends()
+    _log(
+        "backends ready: "
+        f"pillow={'yes' if Image is not None else 'no'} "
+        f"openslide={'yes' if openslide is not None else 'no'}"
+    )
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     tiles_dir = args.out_dir / "tiles"
@@ -97,8 +116,13 @@ def main() -> None:
 
     feature_hits = 0
     tile_hits = 0
+    feature_misses = 0
+    slide_misses = 0
+    feature_errors = 0
+    extract_errors = 0
+    progress_every = 25 if len(rows) >= 25 else max(len(rows), 1)
 
-    for row in rows:
+    for idx, row in enumerate(rows, start=1):
         feature_relpath = str(row.get("feature_relpath", ""))
         slide_key = str(row.get("slide_key", ""))
         encoder = str(row.get("encoder", ""))
@@ -126,8 +150,10 @@ def main() -> None:
         errors: list[str] = []
         if local_feature_path is None:
             errors.append("missing_feature")
+            feature_misses += 1
         if local_slide_path is None:
             errors.append("missing_slide")
+            slide_misses += 1
 
         if local_feature_path is not None:
             feature_key = (str(local_feature_path), int(tile_index))
@@ -153,6 +179,7 @@ def main() -> None:
                 feature_hits += 1
             except Exception as exc:
                 errors.append(f"feature_error:{type(exc).__name__}")
+                feature_errors += 1
 
         if local_slide_path is not None:
             tile_key = (str(local_slide_path), coord_x, coord_y, int(args.tile_size))
@@ -171,13 +198,14 @@ def main() -> None:
                     )
                     tile_path = tiles_dir / slide_key / tile_name
                     tile_path.parent.mkdir(parents=True, exist_ok=True)
-                    tile.save(tile_path)
+                    _save_tile_image(tile, tile_path, image_format=str(args.image_format), image_module=Image)
                     tile_cache[tile_key] = str(tile_path)
                 out_row["tile_image_path"] = tile_cache[tile_key]
                 out_row["tile_path"] = tile_cache[tile_key]
                 tile_hits += 1
             except Exception as exc:
                 errors.append(f"extract_error:{type(exc).__name__}")
+                extract_errors += 1
 
         if errors:
             out_row["status"] = "+".join(errors)
@@ -193,6 +221,13 @@ def main() -> None:
                 )
             ].append(out_row)
 
+        if idx == 1 or idx % progress_every == 0 or idx == len(rows):
+            _log(
+                f"progress {idx}/{len(rows)} feature_hits={feature_hits} tile_hits={tile_hits} "
+                f"feature_misses={feature_misses} slide_misses={slide_misses} "
+                f"feature_errors={feature_errors} extract_errors={extract_errors}"
+            )
+
     materialized_fieldnames = list(dict.fromkeys([*rows[0].keys()] if rows else []))
     for extra in [
         "local_feature_path",
@@ -206,9 +241,11 @@ def main() -> None:
         if extra not in materialized_fieldnames:
             materialized_fieldnames.append(extra)
     materialized_csv = args.out_dir / "materialized_rows.csv"
+    _log(f"writing materialized rows csv -> {materialized_csv}")
     _write_csv(materialized_csv, materialized_rows, materialized_fieldnames)
 
     feature_index_csv = args.out_dir / "encoder_feature_index.csv"
+    _log(f"writing encoder feature index csv -> {feature_index_csv}")
     _write_csv(
         feature_index_csv,
         feature_index_rows,
@@ -230,9 +267,11 @@ def main() -> None:
     else:
         encoder_features = np.empty((0, 0), dtype=np.float32)
     encoder_features_npy = args.out_dir / "encoder_features.npy"
+    _log(f"writing encoder feature matrix -> {encoder_features_npy} shape={tuple(encoder_features.shape)}")
     np.save(encoder_features_npy, encoder_features)
 
     if not args.skip_contact_sheets:
+        _log(f"building contact sheets for {len(rows_by_sheet)} latent/method groups")
         for (latent_strategy, latent_idx, representative_method), sheet_rows in rows_by_sheet.items():
             ordered = sorted(
                 [row for row in sheet_rows if str(row.get("row_kind", "")) == "support"],
@@ -242,6 +281,9 @@ def main() -> None:
                 ordered = sorted(sheet_rows, key=lambda row: int(float(row.get("method_rank", 0))))
             sheet_path = sheets_dir / f"{latent_strategy}__latent_{latent_idx:04d}__{representative_method}.{args.image_format}"
             _make_contact_sheet(ordered, out_path=sheet_path, tile_size=int(args.tile_size), image_module=Image)
+        _log(f"contact sheets written under {sheets_dir}")
+    else:
+        _log("skipping contact sheet generation")
 
     summary = {
         "bundle_manifest": str(manifest_path),
@@ -253,6 +295,10 @@ def main() -> None:
         "rows_total": len(rows),
         "rows_with_feature_vector": feature_hits,
         "rows_with_tile_image": tile_hits,
+        "rows_missing_feature": feature_misses,
+        "rows_missing_slide": slide_misses,
+        "rows_feature_error": feature_errors,
+        "rows_extract_error": extract_errors,
         "unique_feature_vectors": len(feature_vectors),
         "unique_tile_images": len(tile_cache),
         "materialized_rows_csv": str(materialized_csv),
@@ -263,6 +309,7 @@ def main() -> None:
     }
     with (args.out_dir / "materialize_summary.json").open("w") as f:
         json.dump(summary, f, indent=2)
+    _log(f"materialization complete at {args.out_dir}")
     print(json.dumps(summary, indent=2))
 
 

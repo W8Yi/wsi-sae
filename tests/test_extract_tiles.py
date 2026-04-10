@@ -4,6 +4,10 @@ import csv
 import json
 from pathlib import Path
 
+from PIL import Image
+
+from wsi_sae.commands.extract_tiles import _make_contact_sheet
+
 from ._helpers import run_cli, write_slide_image
 
 
@@ -131,3 +135,31 @@ def test_extract_tiles_uses_mapping_registry_and_writes_outputs(tmp_path):
     assert any((out_dir / "contact_sheets").glob("latent_0007.*"))
     summary = json.loads((out_dir / "extract_summary.json").read_text())
     assert summary["tile_size"] == 128
+
+
+def test_make_contact_sheet_skips_unreadable_tiles(tmp_path, monkeypatch):
+    tile_ok = tmp_path / "ok.png"
+    Image.new("RGB", (32, 32), color=(255, 0, 0)).save(tile_ok)
+    tile_bad = tmp_path / "bad.png"
+    tile_bad.write_bytes(b"not-a-real-image")
+
+    real_open = Image.open
+
+    def flaky_open(path, *args, **kwargs):
+        if Path(path) == tile_bad:
+            raise ValueError("Decompressed Data Too Large")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Image, "open", flaky_open)
+
+    out_path = tmp_path / "sheet.png"
+    _make_contact_sheet(
+        [
+            {"tile_path": str(tile_ok)},
+            {"tile_path": str(tile_bad)},
+        ],
+        out_path=out_path,
+        tile_size=32,
+        image_module=Image,
+    )
+    assert out_path.exists()
